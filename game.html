@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Order Failure Training Arcade (Web)</title>
+  <style>
+    body {
+      background: #000;
+      color: #00ff66;
+      font-family: "Courier New", monospace;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #screen {
+      border: 2px solid #00ff66;
+      padding: 16px 20px;
+      max-width: 900px;
+      width: 95%;
+      height: 85vh;
+      box-shadow: 0 0 10px #00ff66;
+      display: flex;
+      flex-direction: column;
+    }
+    #header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 1px;
+      font-size: 13px;
+    }
+    #titleBar {
+      font-weight: bold;
+    }
+    #timer {
+      text-align: right;
+    }
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid #004400;
+      white-space: pre-wrap;
+    }
+    #options {
+      margin-top: 8px;
+    }
+    button {
+      background: #001100;
+      color: #00ff66;
+      border: 1px solid #00ff66;
+      padding: 4px 10px;
+      margin: 2px 4px 2px 0;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #003300;
+    }
+    .dim {
+      color: #008833;
+    }
+  </style>
+</head>
+<body>
+  <div id="screen">
+    <div id="header">
+      <div id="titleBar">ORDER FAILURE TRAINING ARCADE (WEB)</div>
+      <div id="timer">TIME: 120s | CREDITS: 3</div>
+    </div>
+    <div id="content"></div>
+    <div id="options"></div>
+  </div>
+
+  <script>
+    // --- SIMPLE WEB GAME ENGINE ---
+
+    const screenEl = document.getElementById("content");
+    const optionsEl = document.getElementById("options");
+    const timerEl = document.getElementById("timer");
+
+    let credits = 3;
+    let timeLeft = 120; // seconds
+    let timerId = null;
+
+    const scenario1 = {
+      id: 1,
+      poRef: "T234565",
+      orderDateTime: "2025/11/28 15:43",
+      errorText: "CustomerSpecificShipTo {1234} to EID (null) missing.",
+      senderName: "HealthPlus Pharmacy",
+      supplierName: "Prosthetics UK",
+      correctAction: "boarding" // for this MVP
+    };
+
+    function startGame() {
+      credits = 3;
+      timeLeft = 120;
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(() => {
+        timeLeft--;
+        if (timeLeft < 0) {
+          timeLeft = 0;
+          clearInterval(timerId);
+          showTimeUp();
+        }
+        updateTimer();
+      }, 1000);
+      showIntro();
+    }
+
+    function updateTimer() {
+      timerEl.textContent = `TIME: ${timeLeft}s | CREDITS: ${credits}`;
+    }
+
+    function setScreen(textLines, buttons) {
+      screenEl.textContent = "";
+      optionsEl.textContent = "";
+
+      const txt = Array.isArray(textLines) ? textLines.join("\n") : textLines;
+      screenEl.textContent = txt;
+
+      buttons.forEach(btn => {
+        const b = document.createElement("button");
+        b.textContent = btn.label;
+        b.onclick = btn.onClick;
+        optionsEl.appendChild(b);
+      });
+    }
+
+    // --- Screens ---
+
+    function showIntro() {
+      setScreen([
+        "WELCOME TO THE ORDER FAILURE TRAINING ARCADE",
+        "",
+        "You have 2 minutes to fix the order failure.",
+        "",
+        "Scenario 1:",
+        "  Powergate pharmacy order failing:",
+        "  CustomerSpecificShipTo {1234} to EID (null) missing.",
+        "",
+        "Find the correct mapping and process the order before time runs out.",
+        ""
+      ], [
+        { label: "START SCENARIO 1", onClick: () => showErrorScreen(scenario1) }
+      ]);
+    }
+
+    function showErrorScreen(sc) {
+      setScreen([
+        "=== ERROR SCREEN ===",
+        "",
+        `PO:        ${sc.poRef}`,
+        `Date/Time: ${sc.orderDateTime}`,
+        "",
+        "Order Failure:",
+        `  ${sc.errorText}`,
+        "",
+        "Sender:   " + sc.senderName,
+        "Supplier: " + sc.supplierName,
+        "",
+        "What do you want to do?"
+      ], [
+        { label: "1) Check boarding sheet", onClick: () => showBoardingSheet(sc) },
+        { label: "2) Check further (codelookups / GLN)", onClick: () => showCheckFurther(sc) },
+        { label: "3) Contact customer", onClick: () => showContactCustomer(sc) },
+        { label: "4) Try to process order", onClick: () => showProcessOrder(sc) }
+      ]);
+    }
+
+    function showBoardingSheet(sc) {
+      setScreen([
+        "=== BOARDING SHEET ===",
+        "",
+        "You navigate to the Powergate boarding sheet for pharmacies.",
+        "",
+        "You see the following entry matching the order:",
+        "",
+        "  Name: HealthPlus Pharmacy",
+        "  Street: 42 High Street",
+        "  City: London",
+        "  PostCode: NW3 5AB",
+        "  Country: UK",
+        "  EID: 123456789  <-- this is the mapping you need",
+        "",
+        "What next?"
+      ], [
+        { label: "Use this EID and go to PROCESS ORDER", onClick: () => showProcessOrder(sc, true) },
+        { label: "Go back to ERROR SCREEN", onClick: () => showErrorScreen(sc) }
+      ]);
+    }
+
+    function showCheckFurther(sc) {
+      setScreen([
+        "=== CHECK CODELOOKUPS / GLN ===",
+        "",
+        "You open the codelookups screen:",
+        "",
+        "  From CustomerSpecificShipTo {1234} To SupplierSpecificShipTo {S99999}",
+        "  From CustomerSpecificShipTo {1234} To EANLocation {999000111222}",
+        "",
+        "But no EID mapping exists yet.",
+        "",
+        "For this scenario, the quickest way is to use the boarding sheet.",
+        ""
+      ], [
+        { label: "Go back to ERROR SCREEN", onClick: () => showErrorScreen(sc) }
+      ]);
+    }
+
+    function showContactCustomer(sc) {
+      setScreen([
+        "=== CONTACT CUSTOMER ===",
+        "",
+        "You decide to contact the customer for the EID.",
+        "",
+        "However, for this scenario the agreed process is:",
+        "  1) Use the boarding sheet first",
+        "  2) Only contact the customer if data is missing",
+        "",
+        "You lose a credit for not using the boarding sheet.",
+        ""
+      ], [
+        { label: "Go back to ERROR SCREEN", onClick: () => { loseCredit(); showErrorScreen(sc); } }
+      ]);
+    }
+
+    function showProcessOrder(sc, hasCorrectEid = false) {
+      const lines = [
+        "=== PROCESS ORDER ===",
+        "",
+        `PO:        ${sc.poRef}`,
+        `Date/Time: ${sc.orderDateTime}`,
+        "",
+        "From: " + sc.senderName + "   {edit}",
+        "To:   " + sc.supplierName + "   {edit}",
+        "",
+        "Type of lookup: ShipTo",
+        "From qualifier: CustomerSpecificShipTo = 1234",
+        hasCorrectEid
+          ? "To qualifier: EID = 123456789  (from boarding sheet)"
+          : "To qualifier: EID = ?????",
+        "",
+        hasCorrectEid
+          ? "Re-processing order..."
+          : "You try to process the order without a correct EID..."
+      ];
+
+      const buttons = [];
+
+      if (hasCorrectEid) {
+        buttons.push({
+          label: "CONFIRM AND PROCESS",
+          onClick: () => showSuccess()
+        });
+      } else {
+        buttons.push({
+          label: "PROCESS ANYWAY (WRONG)",
+          onClick: () => {
+            loseCredit();
+            setScreen([
+              "=== ORDER STILL FAILING ===",
+              "",
+              "You tried to process the order without a correct EID mapping.",
+              "",
+              "Hint: for this scenario, the boarding sheet contains the EID.",
+              ""
+            ], [
+              { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen(sc) }
+            ]);
+          }
+        });
+        buttons.push({
+          label: "Go back to ERROR SCREEN",
+          onClick: () => showErrorScreen(sc)
+        });
+      }
+
+      setScreen(lines, buttons);
+    }
+
+    function showSuccess() {
+      clearInterval(timerId);
+      setScreen([
+        "=== ORDER SUCCESSFULLY PROCESSED ===",
+        "",
+        "You used the boarding sheet correctly, found the EID,",
+        "and created the right mapping before time ran out.",
+        "",
+        "Nice work!",
+        ""
+      ], [
+        { label: "PLAY AGAIN", onClick: startGame }
+      ]);
+    }
+
+    function showTimeUp() {
+      setScreen([
+        "=== TIME UP ===",
+        "",
+        "You ran out of time before fixing the order.",
+        "",
+        "The order remains in failure.",
+        ""
+      ], [
+        { label: "TRY AGAIN", onClick: startGame }
+      ]);
+    }
+
+    function loseCredit() {
+      credits--;
+      if (credits <= 0) {
+        clearInterval(timerId);
+        setScreen([
+          "=== GAME OVER ===",
+          "",
+          "You have no credits left.",
+          "",
+          "Insert virtual coin to train again. :-)",
+          ""
+        ], [
+          { label: "RESTART GAME", onClick: startGame }
+        ]);
+      } else {
+        updateTimer();
+      }
+    }
+
+    // Start immediately
+    startGame();
+  </script>
+</body>
+</html>
