@@ -1,12 +1,100 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Test Page</title>
-  </head>
-  <body style="background:black;color:#00ff66;font-family:monospace;">
-    <h1>Order Failure Arcade</h1>
-    <p>If you see this as formatted green text on black, HTML is working.</p>
-    <p>If you see the literal characters &lt;html&gt; etc, something is escaping HTML.</p>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Order Failure Training Arcade</title>
+  <style>
+    body {
+      background: #000;
+      color: #00ff66;
+      font-family: "Courier New", monospace;
+      text-align: center;
+      padding: 40px 10px;
+    }
+    .crt {
+      display: inline-block;
+      padding: 20px 30px;
+      border: 2px solid #00ff66;
+      box-shadow: 0 0 20px #00ff66;
+      text-align: left;
+      max-width: 800px;
+      width: 100%;
+    }
+    h1, h2 {
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    h1 {
+      text-align: center;
+      margin-top: 0;
+    }
+    pre {
+      background: #001100;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    a {
+      color: #00ffcc;
+    }
+    .ascii {
+      font-size: 10px;
+      line-height: 10px;
+      text-align: center;
+      margin-bottom: 16px;
+      white-space: pre;
+    }
+    .footer {
+      margin-top: 16px;
+      font-size: 12px;
+      text-align: center;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="crt">
+    <h1>Order Failure Training Arcade</h1>
+
+    <div class="ascii">
+%%%%%**+++###***%***%%%%%%*%%%%%
+%%%%****%#@@@#%%%%*%%%++%##*++*+
+###%%*++#*+%##%*+++==++++*%%++*+
++*+===+=----=+==+=+=+++**##*++=+
+*++=----....:-=+++++****#%+=--=+
+++==--::::..::-===+***###*=--:::
+*++*+==--::::--=+**##%%%#+=---::
+**%%##*+=--:::--==+*#%%%#*+=--::
+    </div>
+
+    <p>
+      A retro VB.NET console game to train users on handling order failures
+      in your exchange app: missing mappings, GLNs, SupplierSpecific IDs,
+      contacting customers, and navigating boarding sheets / SharePoint.
+    </p>
+
+    <h2>How to play</h2>
+    <ol>
+      <li>Install the <a href="https://dotnet.microsoft.com/download" target="_blank">.NET SDK</a>.</li>
+      <li>Clone this repository:</li>
+    </ol>
+
+    <pre>
+git clone https://github.com/beedeetestacc-arch/order-failure-arcade.git
+cd order-failure-arcade
+dotnet run
+    </pre>
+
+    <h2>Source code</h2>
+    <p>
+      View the project on GitHub:<br />
+      <a href="https://github.com/beedeetestacc-arch/order-failure-arcade" target="_blank">
+        github.com/beedeetestacc-arch/order-failure-arcade
+      </a>
+    </p>
+
+    <div class="footer">
+      INSERT COIN TO TRAIN YOUR TEAM ▒▒▒
+    </div>
+  </div>
+</body>
 </html>
