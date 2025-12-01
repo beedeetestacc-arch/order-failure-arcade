@@ -60,9 +60,6 @@
     button:hover {
       background: #003300;
     }
-    .dim {
-      color: #008833;
-    }
   </style>
 </head>
 <body>
@@ -87,6 +84,11 @@
     let timerId = null;
     let currentScenarioId = null;
 
+    // Bonus mini-game state
+    let miniGameActive = false;
+    let miniGameState = null;
+    let miniGameLoopId = null;
+
     // Game state per scenario
     const gameState = {
       1: { hasEidFromBoarding: false },
@@ -109,7 +111,9 @@
         supplierName: "Prosthetics UK",
         descriptionLines: [
           "Powergate pharmacy order failing:",
-          "CustomerSpecificShipTo {1234} to EID (null) missing."
+          "CustomerSpecificShipTo {1234} to EID (null) missing.",
+          "",
+          "The EID and address are stored on the Powergate boarding sheet."
         ],
         correctEid: "123456789"
       },
@@ -122,7 +126,11 @@
         senderName: "Riverside Pharmacy",
         supplierName: "PharmaSupply Ltd",
         descriptionLines: [
-          "Order fails for CustomerSpecificShipTo {5678} to SupplierSpecificShipTo."
+          "Order fails for CustomerSpecificShipTo {5678} to SupplierSpecificShipTo.",
+          "",
+          "The SupplierSpecificShipTo is maintained in SupplierDefined Accounts",
+          "in SharePoint. If you contact the customer instead of checking the",
+          "list, you fail the test."
         ],
         correctCustomerShipTo: "5678",
         correctSupplierShipTo: "PG-SHIP-5678"
@@ -137,6 +145,12 @@
         supplierName: "NHS Supply Chain",
         descriptionLines: [
           "Order fails for CustomerSpecificShipTo {2468} to SupplierSpecificShipTo.",
+          "",
+          "The SupplierDefined Accounts list does NOT contain this mapping.",
+          "You must contact the customer, get the new account, and add it",
+          "to SupplierDefined Accounts BEFORE processing the order.",
+          "",
+          "Hint: the customer will reply with something like Q34M35."
         ],
         correctCustomerShipTo: "2468",
         correctSupplierShipTo: "Q34M35"
@@ -211,6 +225,7 @@
       timerId = null;
       timerEl.textContent = "TIME: -- | CREDITS: --";
       currentScenarioId = null;
+      stopMiniGame();
 
       const lines = [
         "WELCOME TO THE ORDER FAILURE TRAINING ARCADE (WEB)",
@@ -238,8 +253,6 @@
     function beginScenario(id) {
       currentScenarioId = id;
       // reset state for that scenario
-      gameState[id] = JSON.parse(JSON.stringify(gameState[id])) || {};
-      // simple reset of known flags
       if (id === 1) gameState[1] = { hasEidFromBoarding: false };
       if (id === 2) gameState[2] = { hasSupplierShipToFromList: false };
       if (id === 3) gameState[3] = {
@@ -296,7 +309,7 @@
         { label: "1) Check boarding sheet", onClick: () => showBoardingSheet() },
         { label: "2) Check further (codelookups / lists)", onClick: () => showCheckFurther() },
         { label: "3) Contact customer", onClick: () => showContactCustomer() },
-        { label: "4) Process order", onClick: () => showProcessOrder() },
+        { label: "4) Try to process order", onClick: () => showProcessOrder() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
       ]);
     }
@@ -323,8 +336,9 @@
           "  PostCode: NW3 5AB",
           "  Country: UK",
           `  EAN:     999000111222`,
-          `  EID:     ${sc.correctEid}   `,
+          `  EID:     ${sc.correctEid}   <-- this is the value you need`,
           "",
+          "You copy the EID ready to create the mapping.",
           ""
         ];
 
@@ -334,7 +348,6 @@
         ]);
 
       } else if (currentScenarioId === 2) {
-        // Scenario 2: boarding sheet exists but we care about SupplierDefined Accounts
         const lines = [
           "=== BOARDING SHEET - RIVERSIDE PHARMACY ===",
           "",
@@ -356,7 +369,6 @@
         ]);
 
       } else if (currentScenarioId === 3) {
-        // Scenario 3: boarding sheet won't help
         const lines = [
           "=== BOARDING SHEET - EASTSIDE NHS TRUST ===",
           "",
@@ -384,7 +396,6 @@
       const sc = getScenario();
 
       if (currentScenarioId === 1) {
-        // Scenario 1: show codelookups, hint boarding sheet
         const lines = [
           "=== CHECK CODELOOKUPS / GLN ===",
           "",
@@ -416,9 +427,10 @@
           "CustomerShipTo | SupplierShipTo",
           "--------------------------------",
           "1234           | PG-SHIP-1234",
-          "5678           | PG-SHIP-5678",
+          "5678           | PG-SHIP-5678   <-- matching the failing ShipTo",
           "9012           | PG-SHIP-9012",
           "",
+          "You need the SupplierShipTo for CustomerSpecificShipTo {5678}.",
           ""
         ];
 
@@ -448,7 +460,6 @@
         ]);
 
       } else if (currentScenarioId === 3) {
-        // Scenario 3: SupplierDefined Accounts WITHOUT the mapping
         const lines = [
           "=== SUPPLIERDEFINED ACCOUNTS - NHS SUPPLY CHAIN ===",
           "",
@@ -462,6 +473,9 @@
           "",
           "There is NO entry for CustomerSpecificShipTo {2468}.",
           "",
+          "You will need to contact the customer (or supplier contact)",
+          "to obtain the correct SupplierSpecificShipTo, then add it",
+          "to this list before processing the order."
         ];
 
         setScreen(lines, [
@@ -492,11 +506,10 @@
         ];
 
         setScreen(lines, [
-          { label: "Go back to ERROR SCREEN", onClick: () => showErrorScreen() }
+          { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
         ]);
 
       } else if (currentScenarioId === 2) {
-        // Scenario 2: contacting customer is a fail
         const lines = [
           "=== CONTACT CUSTOMER (WRONG PATH) ===",
           "",
@@ -518,7 +531,6 @@
         ]);
 
       } else if (currentScenarioId === 3) {
-        // Scenario 3: must contact customer and capture Q34M35
         const gs = gameState[3];
 
         const preLines = [
@@ -534,12 +546,12 @@
           "The customer replies:",
           "",
           '  "Dear team, please use Q34M35 and reprocess order. Thanks"',
-          ""
+          "",
+          "Type the ShipTo ID provided by the customer (exactly):"
         ];
 
         setScreen(preLines, []);
 
-        // Use prompt for a simple input
         const reply = prompt(
           'Customer reply:\n\n"Dear team, please use Q34M35 and reprocess order. Thanks"\n\nType the ShipTo ID they provided:'
         );
@@ -816,11 +828,12 @@
         "You followed the correct path and created the right mapping",
         "before time and credits ran out.",
         "",
-        "Nice work!",
+        "Bonus: play a quick SPACE CLEANUP mini-game?",
         ""
       ];
 
       setScreen(lines, [
+        { label: "Play SPACE CLEANUP", onClick: () => startMiniGame() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
       ]);
     }
@@ -862,6 +875,195 @@
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
       ]);
     }
+
+    // ---------- BONUS MINI-GAME: SPACE CLEANUP ----------
+
+    function startMiniGame() {
+      miniGameActive = true;
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+      timerEl.textContent = "BONUS: SPACE CLEANUP  |  ←/→ move, SPACE = fire, Q = quit";
+
+      const width = 20;
+      const height = 12;
+
+      // create simple enemy formation
+      const enemies = [];
+      for (let y = 1; y <= 3; y++) {
+        for (let x = 3; x < width - 3; x += 2) {
+          enemies.push({ x, y });
+        }
+      }
+
+      miniGameState = {
+        width,
+        height,
+        playerX: Math.floor(width / 2),
+        enemies,
+        bullets: [],
+        tick: 0,
+        gameOver: false,
+        win: false
+      };
+
+      drawMiniGame();
+      if (miniGameLoopId) clearInterval(miniGameLoopId);
+      miniGameLoopId = setInterval(updateMiniGame, 120);
+    }
+
+    function stopMiniGame() {
+      miniGameActive = false;
+      if (miniGameLoopId) {
+        clearInterval(miniGameLoopId);
+        miniGameLoopId = null;
+      }
+    }
+
+    function updateMiniGame() {
+      if (!miniGameActive || !miniGameState || miniGameState.gameOver) return;
+
+      const s = miniGameState;
+      s.tick++;
+
+      // move bullets up
+      s.bullets.forEach(b => b.y--);
+      s.bullets = s.bullets.filter(b => b.y >= 0);
+
+      // enemy movement (down every few ticks)
+      if (s.tick % 8 === 0) {
+        s.enemies.forEach(e => e.y++);
+      }
+
+      // collisions: bullets vs enemies
+      for (let i = s.bullets.length - 1; i >= 0; i--) {
+        const b = s.bullets[i];
+        for (let j = s.enemies.length - 1; j >= 0; j--) {
+          const e = s.enemies[j];
+          if (b.x === e.x && b.y === e.y) {
+            s.enemies.splice(j, 1);
+            s.bullets.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      // check lose: any enemy reaches player row
+      if (s.enemies.some(e => e.y >= s.height - 1)) {
+        s.gameOver = true;
+        s.win = false;
+        stopMiniGame();
+        showMiniGameResult(false);
+        return;
+      }
+
+      // check win: all enemies destroyed
+      if (s.enemies.length === 0) {
+        s.gameOver = true;
+        s.win = true;
+        stopMiniGame();
+        showMiniGameResult(true);
+        return;
+      }
+
+      drawMiniGame();
+    }
+
+    function drawMiniGame() {
+      const s = miniGameState;
+      if (!s) return;
+
+      const grid = [];
+      for (let y = 0; y < s.height; y++) {
+        let row = "";
+        for (let x = 0; x < s.width; x++) {
+          row += " ";
+        }
+        grid.push(row.split(""));
+      }
+
+      // enemies
+      s.enemies.forEach(e => {
+        if (e.y >= 0 && e.y < s.height && e.x >= 0 && e.x < s.width) {
+          grid[e.y][e.x] = "^";
+        }
+      });
+
+      // bullets
+      s.bullets.forEach(b => {
+        if (b.y >= 0 && b.y < s.height && b.x >= 0 && b.x < s.width) {
+          grid[b.y][b.x] = "|";
+        }
+      });
+
+      // player
+      const py = s.height - 1;
+      if (s.playerX >= 0 && s.playerX < s.width) {
+        grid[py][s.playerX] = "A";
+      }
+
+      const lines = [
+        "=== BONUS GAME: SPACE CLEANUP ===",
+        "",
+        "Clear the incoming errors (^) before they reach you (A).",
+        "",
+        grid.map(row => row.join("")).join("\n"),
+        "",
+        "Controls: ←/→ or A/D to move, SPACE to fire, Q to quit",
+        ""
+      ];
+
+      screenEl.textContent = lines.join("\n");
+      optionsEl.textContent = ""; // no buttons, keyboard only
+    }
+
+    function showMiniGameResult(win) {
+      const lines = win
+        ? [
+            "=== SPACE CLEANUP - VICTORY ===",
+            "",
+            "You cleared all the incoming errors.",
+            "",
+            "Well done!",
+            ""
+          ]
+        : [
+            "=== SPACE CLEANUP - FAILED ===",
+            "",
+            "An error wave reached your position.",
+            "",
+            "The galaxy of mappings trembles...",
+            ""
+          ];
+
+      setScreen(lines, [
+        { label: "Back to Main Menu", onClick: () => showMainMenu() }
+      ]);
+    }
+
+    // Keyboard controls for mini-game
+    document.addEventListener("keydown", (ev) => {
+      if (!miniGameActive || !miniGameState) return;
+
+      const s = miniGameState;
+      const key = ev.key;
+
+      if (key === "ArrowLeft" || key === "a" || key === "A") {
+        s.playerX = Math.max(0, s.playerX - 1);
+        drawMiniGame();
+      } else if (key === "ArrowRight" || key === "d" || key === "D") {
+        s.playerX = Math.min(s.width - 1, s.playerX + 1);
+        drawMiniGame();
+      } else if (key === " " || key === "Spacebar") {
+        // fire bullet from just above player
+        s.bullets.push({ x: s.playerX, y: s.height - 2 });
+        drawMiniGame();
+      } else if (key === "q" || key === "Q") {
+        stopMiniGame();
+        showMainMenu();
+      }
+    });
 
     // ---------- START ----------
 
