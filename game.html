@@ -66,7 +66,7 @@
   <div id="screen">
     <div id="header">
       <div id="titleBar">ORDER FAILURE TRAINING ARCADE (WEB)</div>
-      <div id="timer">TIME: -- | CREDITS: --</div>
+      <div id="timer">TIME: -- | CREDITS: -- | HINTS: 3</div>
     </div>
     <div id="content"></div>
     <div id="options"></div>
@@ -84,6 +84,10 @@
     let timerId = null;
     let currentScenarioId = null;
 
+    // Hints
+    let hintsLeft = 3;
+    let currentHintContext = null;
+
     // Bonus mini-game state
     let miniGameActive = false;
     let miniGameState = null;
@@ -92,9 +96,10 @@
     // Game state per scenario
     const gameState = {
       1: { hasEidFromBoarding: false },
-      2: { hasSupplierShipToFromList: false },
+      2: { hasSupplierShipToFromList: false, selectedSupplierShipTo: null },
       3: {
         hasSupplierShipToFromCustomer: false,
+        capturedSupplierShipTo: null,
         savedToSupplierDefined: false
       }
     };
@@ -110,12 +115,36 @@
         senderName: "HealthPlus Pharmacy",
         supplierName: "Prosthetics UK",
         descriptionLines: [
-          "Powergate pharmacy order failing:",
-          "CustomerSpecificShipTo {1234} to EID (null) missing.",
+          "A pharmacy order has failed with a missing mapping",
+          "from a CustomerSpecificShipTo to an EID.",
           "",
-          "The EID and address are stored on the Powergate boarding sheet."
+          "You need to work out where to find the correct identifier",
+          "and how to map it before the timer runs out."
         ],
-        correctEid: "123456789"
+        correctEid: "123456789",
+        // Order details addresses (no IDs shown here)
+        buyerAddress: {
+          name: "HealthPlus Pharmacy",
+          department: "Pharmacy Office",
+          street: "42 High Street",
+          city: "London",
+          postcode: "NW3 5AB",
+          country: "UK"
+        },
+        shipToAddress: {
+          department: "Main Stores",
+          street: "7 Warehouse Lane",
+          city: "London",
+          postcode: "NW3 5AB",
+          country: "UK"
+        },
+        billToAddress: {
+          department: "Accounts",
+          street: "1 Finance Road",
+          city: "London",
+          postcode: "NW1 2CD",
+          country: "UK"
+        }
       },
       2: {
         id: 2,
@@ -126,14 +155,36 @@
         senderName: "Riverside Pharmacy",
         supplierName: "PharmaSupply Ltd",
         descriptionLines: [
-          "Order fails for CustomerSpecificShipTo {5678} to SupplierSpecificShipTo.",
+          "A pharmacy order has failed because a CustomerSpecificShipTo",
+          "doesn't have a SupplierSpecificShipTo mapping.",
           "",
-          "The SupplierSpecificShipTo is maintained in SupplierDefined Accounts",
-          "in SharePoint. If you contact the customer instead of checking the",
-          "list, you fail the test."
+          "There are several potential places where this information",
+          "could live. Choose wisely."
         ],
         correctCustomerShipTo: "5678",
-        correctSupplierShipTo: "PG-SHIP-5678"
+        correctSupplierShipTo: "PG-SHIP-5678",
+        buyerAddress: {
+          name: "Riverside Pharmacy",
+          department: "Front Counter",
+          street: "15 Riverside Walk",
+          city: "Leeds",
+          postcode: "LS1 4AA",
+          country: "UK"
+        },
+        shipToAddress: {
+          department: "Back Room",
+          street: "22 Stock Lane",
+          city: "Leeds",
+          postcode: "LS1 4AB",
+          country: "UK"
+        },
+        billToAddress: {
+          department: "Accounts",
+          street: "10 Finance Crescent",
+          city: "Leeds",
+          postcode: "LS2 3CD",
+          country: "UK"
+        }
       },
       3: {
         id: 3,
@@ -144,16 +195,36 @@
         senderName: "Eastside NHS Trust",
         supplierName: "NHS Supply Chain",
         descriptionLines: [
-          "Order fails for CustomerSpecificShipTo {2468} to SupplierSpecificShipTo.",
+          "An NHS order fails because the CustomerSpecificShipTo has",
+          "no SupplierSpecificShipTo mapping.",
           "",
-          "The SupplierDefined Accounts list does NOT contain this mapping.",
-          "You must contact the customer, get the new account, and add it",
-          "to SupplierDefined Accounts BEFORE processing the order.",
-          "",
-          "Hint: the customer will reply with something like Q34M35."
+          "The usual internal list doesn't contain an entry for this",
+          "ship-to. You need to decide how to get and store a new account."
         ],
         correctCustomerShipTo: "2468",
-        correctSupplierShipTo: "Q34M35"
+        correctSupplierShipTo: "Q34M35",
+        buyerAddress: {
+          name: "Eastside NHS Trust",
+          department: "Procurement",
+          street: "100 Hospital Road",
+          city: "Birmingham",
+          postcode: "B2 4ZZ",
+          country: "UK"
+        },
+        shipToAddress: {
+          department: "Main Stores",
+          street: "2 Delivery Yard",
+          city: "Birmingham",
+          postcode: "B2 4ZZ",
+          country: "UK"
+        },
+        billToAddress: {
+          department: "Finance",
+          street: "5 Ledger Street",
+          city: "Birmingham",
+          postcode: "B2 3QQ",
+          country: "UK"
+        }
       }
     };
 
@@ -161,71 +232,147 @@
       return scenarios[currentScenarioId];
     }
 
-    // ---------- TIMER & CREDITS ----------
+    // ---------- TIMER & CREDITS & HINTS ----------
 
-    function updateTimer() {
-      timerEl.textContent = `TIME: ${timeLeft}s | CREDITS: ${credits}`;
+    function updateStatusBar() {
+      if (miniGameActive) return; // mini-game overrides the bar
+      const t = timerId ? `${timeLeft}s` : "--";
+      timerEl.textContent = `TIME: ${t} | CREDITS: ${credits} | HINTS: ${hintsLeft}`;
     }
 
     function startTimer() {
       if (timerId) clearInterval(timerId);
       timeLeft = 120;
-      updateTimer();
+      updateStatusBar();
       timerId = setInterval(() => {
         timeLeft--;
         if (timeLeft <= 0) {
           timeLeft = 0;
-          updateTimer();
           clearInterval(timerId);
+          timerId = null;
+          updateStatusBar();
           showTimeUp();
         } else {
-          updateTimer();
+          updateStatusBar();
         }
       }, 1000);
     }
 
     function resetCredits() {
       credits = 3;
-      updateTimer();
+      updateStatusBar();
     }
 
     function loseCredit() {
       credits--;
       if (credits <= 0) {
         credits = 0;
-        if (timerId) clearInterval(timerId);
-        updateTimer();
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+        updateStatusBar();
         showGameOver();
       } else {
-        updateTimer();
+        updateStatusBar();
       }
+    }
+
+    // ---------- HINTS ----------
+
+    function useHint(context) {
+      if (miniGameActive) return;
+      if (hintsLeft <= 0) {
+        alert("No hints left for this run.");
+        return;
+      }
+      const sc = getScenario();
+      if (!sc) {
+        alert("Hints are only available during scenarios.");
+        return;
+      }
+      hintsLeft--;
+      updateStatusBar();
+
+      let hint = "Think about your next logical step based on what you see.";
+
+      if (sc.id === 1) {
+        if (context === "error") {
+          hint = "Where would you normally find internal identifiers linked to a ship-to and address for this provider?";
+        } else if (context === "boarding") {
+          hint = "Try matching the address or GLN on the order to a row, then look at the identifier on that row.";
+        } else if (context === "checkFurther") {
+          hint = "If an EID mapping is missing, what internal data should you create it from?";
+        } else if (context === "process") {
+          hint = "Your mapping should use ShipTo, CustomerSpecificShipTo on the FROM side, and an EID on the TO side.";
+        } else if (context === "details") {
+          hint = "Compare the order addresses with whatever internal lists you have before deciding the identifier.";
+        }
+      } else if (sc.id === 2) {
+        if (context === "error") {
+          hint = "For supplier-specific codes, is the first place you check a boarding sheet or a dedicated account list?";
+        } else if (context === "checkFurther") {
+          hint = "Look for a list that pairs Customer ShipTo IDs with the Supplier's ShipTo IDs.";
+        } else if (context === "process") {
+          hint = "Your TO side should reference a SupplierSpecificShipTo value you've verified in the correct list.";
+        } else if (context === "details") {
+          hint = "Make sure the ShipTo ID you use matches the one shown on the failing order.";
+        }
+      } else if (sc.id === 3) {
+        if (context === "error") {
+          hint = "If an internal list has no entry, what is your next escalation route before guessing an identifier?";
+        } else if (context === "checkFurther") {
+          hint = "No line for this ShipTo means you probably need a brand-new account from somewhere.";
+        } else if (context === "contact") {
+          hint = "Pay attention to the exact string the customer gives you and think about where you store it.";
+        } else if (context === "process") {
+          hint = "A future-proof fix means your mapping uses the new account AND the internal list is updated.";
+        } else if (context === "details") {
+          hint = "The order details tell you which ship-to you are fixing. Use that consistently across your steps.";
+        }
+      }
+
+      alert("Hint: " + hint);
     }
 
     // ---------- SCREEN RENDERING ----------
 
-    function setScreen(textLines, buttons) {
+    function setScreen(textLines, buttons, hintContext = null) {
       screenEl.textContent = "";
       optionsEl.textContent = "";
 
       const txt = Array.isArray(textLines) ? textLines.join("\n") : textLines;
       screenEl.textContent = txt;
 
+      currentHintContext = hintContext;
+
+      // Render main buttons
       buttons.forEach(btn => {
         const b = document.createElement("button");
         b.textContent = btn.label;
         b.onclick = btn.onClick;
         optionsEl.appendChild(b);
       });
+
+      // Add Hint button automatically on scenario screens if hints remain
+      if (currentScenarioId !== null && hintsLeft > 0 && hintContext) {
+        const hb = document.createElement("button");
+        hb.textContent = `Hint (${hintsLeft} left)`;
+        hb.onclick = () => useHint(hintContext);
+        optionsEl.appendChild(hb);
+      }
     }
 
     // ---------- MAIN MENU ----------
 
     function showMainMenu() {
-      if (timerId) clearInterval(timerId);
-      timerId = null;
-      timerEl.textContent = "TIME: -- | CREDITS: --";
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
       currentScenarioId = null;
       stopMiniGame();
+      updateStatusBar();
 
       const lines = [
         "WELCOME TO THE ORDER FAILURE TRAINING ARCADE (WEB)",
@@ -236,11 +383,12 @@
         "  2) Scenario 2 - SupplierDefined Accounts (ShipTo -> SupplierSpecific)",
         "  3) Scenario 3 - NHS Supply Chain (missing SupplierSpecific)",
         "",
-        "Each scenario gives you:",
-        "  - 2 minutes (120 seconds)",
-        "  - 3 credits",
+        "You have:",
+        "  - 2 minutes per scenario",
+        "  - 3 credits per run",
+        "  - 3 hints total (for all scenarios)",
         "",
-        "Fix the failure before time and credits run out."
+        "Try to complete the scenarios with as few hints as possible."
       ];
 
       setScreen(lines, [
@@ -254,9 +402,10 @@
       currentScenarioId = id;
       // reset state for that scenario
       if (id === 1) gameState[1] = { hasEidFromBoarding: false };
-      if (id === 2) gameState[2] = { hasSupplierShipToFromList: false };
+      if (id === 2) gameState[2] = { hasSupplierShipToFromList: false, selectedSupplierShipTo: null };
       if (id === 3) gameState[3] = {
         hasSupplierShipToFromCustomer: false,
+        capturedSupplierShipTo: null,
         savedToSupplierDefined: false
       };
 
@@ -275,13 +424,13 @@
         "",
         ...sc.descriptionLines,
         "",
-        "Press START to see the error and begin."
+        "Press START to see the failure."
       ];
 
       setScreen(lines, [
         { label: "START", onClick: () => showErrorScreen() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], "intro");
     }
 
     // ---------- GENERIC ERROR SCREEN ----------
@@ -306,12 +455,52 @@
       ];
 
       setScreen(lines, [
-        { label: "1) Check boarding sheet", onClick: () => showBoardingSheet() },
-        { label: "2) Check further (codelookups / lists)", onClick: () => showCheckFurther() },
-        { label: "3) Contact customer", onClick: () => showContactCustomer() },
-        { label: "4) Try to process order", onClick: () => showProcessOrder() },
+        { label: "1) View order details", onClick: () => showOrderDetails() },
+        { label: "2) Check boarding sheet", onClick: () => showBoardingSheet() },
+        { label: "3) Check further (lists / codelookups)", onClick: () => showCheckFurther() },
+        { label: "4) Contact customer", onClick: () => showContactCustomer() },
+        { label: "5) Try to process order", onClick: () => showProcessOrder() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], "error");
+    }
+
+    // ---------- ORDER DETAILS SCREEN ----------
+
+    function formatAddress(label, addr) {
+      return [
+        label,
+        "  Department: " + addr.department,
+        "  Street:     " + addr.street,
+        "  City:       " + addr.city,
+        "  PostCode:   " + addr.postcode,
+        "  Country:    " + addr.country
+      ];
+    }
+
+    function showOrderDetails() {
+      const sc = getScenario();
+      const lines = [
+        "=== ORDER DETAILS ===",
+        "",
+        `Scenario: ${sc.name}`,
+        "",
+        `PO:        ${sc.poRef}`,
+        `Date/Time: ${sc.orderDateTime}`,
+        "",
+        ...formatAddress("Buyer address:", sc.buyerAddress),
+        "",
+        ...formatAddress("ShipTo address:", sc.shipToAddress),
+        "",
+        ...formatAddress("BillTo address:", sc.billToAddress),
+        "",
+        "Use these details to recognise the correct entity and match",
+        "it against your internal lists."
+      ];
+
+      setScreen(lines, [
+        { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+        { label: "Go to PROCESS ORDER", onClick: () => showProcessOrder() }
+      ], "details");
     }
 
     // ---------- BOARDING SHEET (SCENARIO-SPECIFIC) ----------
@@ -320,7 +509,7 @@
       const sc = getScenario();
 
       if (currentScenarioId === 1) {
-        // Scenario 1: EID is on boarding sheet
+        // Scenario 1: EID is discoverable via boarding sheet.
         gameState[1].hasEidFromBoarding = true;
 
         const lines = [
@@ -328,65 +517,57 @@
           "",
           "You navigate to: Shared Drive -> Pharmacies -> Powergate -> Boarding sheet",
           "",
-          "Matching entry:",
+          "A few rows catch your eye:",
           "",
-          "  Name:    HealthPlus Pharmacy",
-          "  Street:  42 High Street",
-          "  City:    London",
-          "  PostCode: NW3 5AB",
-          "  Country: UK",
-          `  EAN:     999000111222`,
-          `  EID:     ${sc.correctEid}   <-- this is the value you need`,
+          "  Name:      HealthPlus Pharmacy",
+          "  Dept:      Main Stores",
+          "  Street:    7 Warehouse Lane",
+          "  City:      London",
+          "  PostCode:  NW3 5AB",
+          "  Country:   UK",
+          "  GLN/EAN:   999000111222",
+          `  EID:       ${sc.correctEid}`,
           "",
-          "You copy the EID ready to create the mapping.",
-          ""
+          "You note down the EID to use in your mapping."
         ];
 
         setScreen(lines, [
-          { label: "Go to PROCESS ORDER with this EID", onClick: () => showProcessOrder() },
+          { label: "Go to PROCESS ORDER", onClick: () => showProcessOrder() },
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "boarding");
 
       } else if (currentScenarioId === 2) {
         const lines = [
           "=== BOARDING SHEET - RIVERSIDE PHARMACY ===",
           "",
-          "You open the boarding sheet. It shows address and maybe EID / GLN,",
-          "but the failure is:",
+          "You open the boarding sheet. It confirms address details and",
+          "some internal identifiers.",
           "",
-          "  CustomerSpecificShipTo {5678} -> SupplierSpecificShipTo (null)",
+          "However, the failure is specifically about a Supplier-specific",
+          "ship-to account for this order.",
           "",
-          "SupplierSpecificShipTo is maintained in SupplierDefined Accounts",
-          "in SharePoint, not on this boarding sheet.",
-          "",
-          "You should check the SupplierDefined Accounts list.",
-          ""
+          "Think about where you normally keep those mappings."
         ];
 
         setScreen(lines, [
-          { label: "Go to CHECK FURTHER (SupplierDefined Accounts)", onClick: () => showCheckFurther() },
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "boarding");
 
       } else if (currentScenarioId === 3) {
         const lines = [
           "=== BOARDING SHEET - EASTSIDE NHS TRUST ===",
           "",
-          "You open the boarding sheet. It confirms the address and that",
-          "CustomerSpecificShipTo {2468} is valid, but there is no",
-          "SupplierSpecificShipTo here.",
+          "The boarding sheet confirms the order belongs to Eastside NHS",
+          "Trust, and that the ShipTo is valid.",
           "",
-          "For NHS Supply Chain, SupplierSpecificShipTo is controlled via",
-          "SupplierDefined Accounts (and sometimes new codes provided by the",
-          "customer).",
+          "There is still no Supplier-specific account visible here.",
           "",
-          "You will need to check the lists and probably contact the customer."
+          "You may need another source of truth for the supplier-side code."
         ];
 
         setScreen(lines, [
-          { label: "Go to CHECK FURTHER (SupplierDefined Accounts)", onClick: () => showCheckFurther() },
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "boarding");
       }
     }
 
@@ -399,22 +580,19 @@
         const lines = [
           "=== CHECK CODELOOKUPS / GLN ===",
           "",
-          "You look at the current codelookups:",
+          "You review existing mappings for this buyer:",
           "",
           "  From CustomerSpecificShipTo {1234} To SupplierSpecificShipTo {S99999}",
           "  From CustomerSpecificShipTo {1234} To EANLocation {999000111222}",
           "",
           "No EID mapping exists yet.",
           "",
-          "For this scenario, the fastest path is to use the boarding sheet",
-          "to find the correct EID and then create the mapping.",
-          ""
+          "You will need to introduce a correct EID based on trusted data."
         ];
 
         setScreen(lines, [
-          { label: "Go to BOARDING SHEET", onClick: () => showBoardingSheet() },
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "checkFurther");
 
       } else if (currentScenarioId === 2) {
         // Scenario 2: SupplierDefined Accounts WITH the mapping
@@ -427,16 +605,15 @@
           "CustomerShipTo | SupplierShipTo",
           "--------------------------------",
           "1234           | PG-SHIP-1234",
-          "5678           | PG-SHIP-5678   <-- matching the failing ShipTo",
+          "5678           | PG-SHIP-5678",
           "9012           | PG-SHIP-9012",
           "",
-          "You need the SupplierShipTo for CustomerSpecificShipTo {5678}.",
-          ""
+          "One of these rows matches the failing CustomerSpecificShipTo."
         ];
 
         setScreen(lines, [
           {
-            label: "Select row with 5678 -> PG-SHIP-5678",
+            label: "Select the matching row and note SupplierShipTo",
             onClick: () => {
               gs.hasSupplierShipToFromList = true;
               gs.selectedSupplierShipTo = sc.correctSupplierShipTo;
@@ -445,19 +622,19 @@
                 "",
                 "  CustomerShipTo 5678 -> SupplierShipTo " + sc.correctSupplierShipTo,
                 "",
-                "You can now create the mapping in the exchange."
+                "You can now use this when processing the order."
               ];
               setScreen(msg, [
                 { label: "Go to PROCESS ORDER", onClick: () => showProcessOrder() },
                 { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-              ]);
+              ], "checkFurther");
             }
           },
           {
-            label: "Ignore list and go back",
+            label: "Ignore the list and go back",
             onClick: () => showErrorScreen()
           }
-        ]);
+        ], "checkFurther");
 
       } else if (currentScenarioId === 3) {
         const lines = [
@@ -471,17 +648,16 @@
           "2222           | NSC-ACC-2222",
           "3333           | NSC-ACC-3333",
           "",
-          "There is NO entry for CustomerSpecificShipTo {2468}.",
+          "There is no entry for CustomerSpecificShipTo {2468}.",
           "",
-          "You will need to contact the customer (or supplier contact)",
-          "to obtain the correct SupplierSpecificShipTo, then add it",
-          "to this list before processing the order."
+          "You will need a brand new account from the right contact and",
+          "store it here before you rely on it."
         ];
 
         setScreen(lines, [
-          { label: "Contact customer for new account", onClick: () => showContactCustomer() },
+          { label: "Contact customer", onClick: () => showContactCustomer() },
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "checkFurther");
       }
     }
 
@@ -494,20 +670,16 @@
         const lines = [
           "=== CONTACT CUSTOMER ===",
           "",
-          "You consider emailing the customer for the EID.",
+          "You consider contacting the customer about the missing EID.",
           "",
-          "However, for this scenario the EID is clearly available in the",
-          "boarding sheet / internal Powergate documentation.",
-          "",
-          "Best practice:",
-          "  - Use internal mapping sources first",
-          "  - Only contact the customer if data is missing",
-          ""
+          "For this type of identifier, think carefully about whether the",
+          "customer is the right source, or whether an internal reference",
+          "should be created based on existing internal data first."
         ];
 
         setScreen(lines, [
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
-        ]);
+        ], "contact");
 
       } else if (currentScenarioId === 2) {
         const lines = [
@@ -515,11 +687,11 @@
           "",
           "You decide to contact the customer for the SupplierSpecificShipTo.",
           "",
-          "For this scenario, the mapping already exists in the",
-          "SupplierDefined Accounts list in SharePoint.",
+          "In this scenario, the mapping already exists in SupplierDefined",
+          "Accounts in SharePoint.",
           "",
-          "By contacting the customer instead of checking the list,",
-          "you have FAILED the test for this scenario.",
+          "By skipping that list and going straight to the customer,",
+          "you've taken the wrong route.",
           ""
         ];
 
@@ -528,7 +700,7 @@
         setScreen(lines, [
           { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
           { label: "Back to Main Menu", onClick: () => showMainMenu() }
-        ]);
+        ], "contact");
 
       } else if (currentScenarioId === 3) {
         const gs = gameState[3];
@@ -536,102 +708,108 @@
         const preLines = [
           "=== CONTACT CUSTOMER ===",
           "",
-          "You search Salesforce for Eastside NHS Trust and find the correct",
-          "EDI contact email. You send a structured email asking for the",
-          "SupplierSpecificShipTo for:",
+          "You look up the correct contact for Eastside NHS Trust",
+          "and send a structured email asking for the supplier-side",
+          "account for this ship-to.",
           "",
           `  PO:  ${sc.poRef}`,
           `  ShipTo ID: ${sc.correctCustomerShipTo}`,
           "",
-          "The customer replies:",
-          "",
-          '  "Dear team, please use Q34M35 and reprocess order. Thanks"',
-          "",
-          "Type the ShipTo ID provided by the customer (exactly):"
+          "The customer replies with a specific code.",
+          ""
         ];
 
-        setScreen(preLines, []);
-
-        const reply = prompt(
-          'Customer reply:\n\n"Dear team, please use Q34M35 and reprocess order. Thanks"\n\nType the ShipTo ID they provided:'
-        );
-
-        if (!reply) {
-          loseCredit();
-          const lines = [
-            "You failed to capture a valid account from the customer reply.",
-            "",
-            "No mapping created.",
-            ""
-          ];
-          setScreen(lines, [
-            { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-            { label: "Back to Main Menu", onClick: () => showMainMenu() }
-          ]);
-          return;
-        }
-
-        if (reply.trim().toUpperCase() !== sc.correctSupplierShipTo) {
-          loseCredit();
-          const lines = [
-            "The value you noted does not match the customer reply.",
-            "",
-            "Correct value was: " + sc.correctSupplierShipTo,
-            "",
-            "You cannot safely map the order with an incorrect account."
-          ];
-          setScreen(lines, [
-            { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-            { label: "Back to Main Menu", onClick: () => showMainMenu() }
-          ]);
-          return;
-        }
-
-        gs.hasSupplierShipToFromCustomer = true;
-        gs.capturedSupplierShipTo = sc.correctSupplierShipTo;
-
-        const afterLines = [
-          "You correctly captured the new SupplierSpecificShipTo:",
-          "",
-          "  " + sc.correctSupplierShipTo,
-          "",
-          "Next important step:",
-          "  - Add this to the SupplierDefined Accounts list before",
-          "    processing the order.",
-          "",
-          "What do you do now?"
-        ];
-
-        setScreen(afterLines, [
+        setScreen(preLines, [
           {
-            label: "Add to SupplierDefined Accounts, then PROCESS ORDER",
+            label: "Read reply and capture account",
             onClick: () => {
-              gs.savedToSupplierDefined = true;
-              showProcessOrder();
+              const reply = prompt(
+                'Customer reply:\n\n"Dear team, please use Q34M35 and reprocess order. Thanks"\n\nType the ShipTo ID they provided:'
+              );
+              if (!reply) {
+                loseCredit();
+                const lines = [
+                  "You failed to capture a usable account from the reply.",
+                  "",
+                  "No mapping created.",
+                  ""
+                ];
+                setScreen(lines, [
+                  { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+                  { label: "Back to Main Menu", onClick: () => showMainMenu() }
+                ], "contact");
+                return;
+              }
+
+              if (reply.trim().toUpperCase() !== sc.correctSupplierShipTo) {
+                loseCredit();
+                const lines = [
+                  "The value you captured does not match the reply.",
+                  "",
+                  "Correct value was: " + sc.correctSupplierShipTo,
+                  "",
+                  "You cannot safely map the order with an incorrect account."
+                ];
+                setScreen(lines, [
+                  { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+                  { label: "Back to Main Menu", onClick: () => showMainMenu() }
+                ], "contact");
+                return;
+              }
+
+              gs.hasSupplierShipToFromCustomer = true;
+              gs.capturedSupplierShipTo = sc.correctSupplierShipTo;
+
+              const afterLines = [
+                "You correctly captured the new SupplierSpecificShipTo:",
+                "",
+                "  " + sc.correctSupplierShipTo,
+                "",
+                "Next step: you need to update your internal list before",
+                "relying on this account in mappings."
+              ];
+
+              setScreen(afterLines, [
+                {
+                  label: "Add to SupplierDefined Accounts",
+                  onClick: () => {
+                    gs.savedToSupplierDefined = true;
+                    const msg = [
+                      "You add the new account to:",
+                      "",
+                      "  SupplierDefined Accounts - NHS Supply Chain",
+                      "",
+                      "Now you can safely use it in your mapping."
+                    ];
+                    setScreen(msg, [
+                      { label: "Go to PROCESS ORDER", onClick: () => showProcessOrder() },
+                      { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
+                    ], "contact");
+                  }
+                },
+                {
+                  label: "Skip updating list (risky)",
+                  onClick: () => {
+                    loseCredit();
+                    const warn = [
+                      "You decide not to update the internal list.",
+                      "",
+                      "Even if this order could be fixed once, the setup",
+                      "would not be reliable for future traffic.",
+                      "",
+                      "In this training, that counts as a failed approach."
+                    ];
+                    setScreen(warn, [
+                      { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+                      { label: "Back to Main Menu", onClick: () => showMainMenu() }
+                    ], "contact");
+                  }
+                }
+              ], "contact");
             }
           },
-          {
-            label: "Skip updating list and go straight to PROCESS ORDER",
-            onClick: () => {
-              loseCredit();
-              const warn = [
-                "You went straight to processing without updating",
-                "SupplierDefined Accounts.",
-                "",
-                "Result:",
-                "  - Mapping will work once, but the failure may return",
-                "    on the next order.",
-                "",
-                "In this training, that counts as a FAIL.",
-                ""
-              ];
-              setScreen(warn, [
-                { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-                { label: "Back to Main Menu", onClick: () => showMainMenu() }
-              ]);
-            }
-          }
-        ]);
+          { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
+        ], "contact");
       }
     }
 
@@ -640,184 +818,234 @@
     function showProcessOrder() {
       const sc = getScenario();
 
+      let lines = [
+        "=== PROCESS ORDER ===",
+        "",
+        `Scenario: ${sc.name}`,
+        "",
+        `PO:        ${sc.poRef}`,
+        `Date/Time: ${sc.orderDateTime}`,
+        "",
+        `Error: ${sc.errorText}`,
+        "",
+        "You are about to create the mapping the exchange will use.",
+        "",
+        "From: " + sc.senderName + "   {edit}",
+        "To:   " + sc.supplierName + "   {edit}",
+        "",
+        "You will be asked for:",
+        "  - Type of lookup (Main / ShipTo / BillTo)",
+        "  - FROM qualifier and value",
+        "  - TO qualifier and value",
+        "",
+        "Your answers will decide whether the order passes or fails."
+      ];
+
+      setScreen(lines, [
+        { label: "Enter mapping and process", onClick: () => enterMappingForScenario() },
+        { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() }
+      ], "process");
+    }
+
+    function enterMappingForScenario() {
+      const sc = getScenario();
+
+      // Scenario-specific “path” preconditions
       if (currentScenarioId === 1) {
-        const gs = gameState[1];
-        const hasEid = gs.hasEidFromBoarding;
-
-        const lines = [
-          "=== PROCESS ORDER ===",
-          "",
-          `PO:        ${sc.poRef}`,
-          `Date/Time: ${sc.orderDateTime}`,
-          "",
-          `Error: ${sc.errorText}`,
-          "",
-          "From: " + sc.senderName + "   {edit}",
-          "To:   " + sc.supplierName + "   {edit}",
-          "",
-          "Type of lookup: ShipTo",
-          "From qualifier: CustomerSpecificShipTo = 1234",
-          hasEid
-            ? `To qualifier: EID = ${sc.correctEid}  (from boarding sheet)`
-            : "To qualifier: EID = ?????",
-          ""
-        ];
-
-        const buttons = [];
-
-        if (hasEid) {
-          buttons.push({
-            label: "CONFIRM AND PROCESS",
-            onClick: () => showSuccess()
-          });
-        } else {
-          buttons.push({
-            label: "PROCESS ANYWAY (WRONG)",
-            onClick: () => {
-              loseCredit();
-              const msg = [
-                "=== ORDER STILL FAILING ===",
-                "",
-                "You tried to process the order without a correct EID mapping.",
-                "",
-                "Hint: for this scenario, the boarding sheet contains the EID.",
-                ""
-              ];
-              setScreen(msg, [
-                { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-                { label: "Back to Main Menu", onClick: () => showMainMenu() }
-              ]);
-            }
-          });
+        if (!gameState[1].hasEidFromBoarding) {
+          loseCredit();
+          const lines = [
+            "You try to create a mapping without having a clear EID",
+            "from your internal references.",
+            "",
+            "In this training, you are expected to confirm the EID",
+            "before using it.",
+            ""
+          ];
+          setScreen(lines, [
+            { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+            { label: "Back to Main Menu", onClick: () => showMainMenu() }
+          ], "process");
+          return;
         }
-
-        buttons.push({ label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() });
-
-        setScreen(lines, buttons);
-
       } else if (currentScenarioId === 2) {
-        const gs = gameState[2];
-        const hasSupp = gs.hasSupplierShipToFromList;
-        const suppVal = gs.selectedSupplierShipTo || scenarios[2].correctSupplierShipTo;
-
-        const lines = [
-          "=== PROCESS ORDER ===",
-          "",
-          `PO:        ${sc.poRef}`,
-          `Date/Time: ${sc.orderDateTime}`,
-          "",
-          `Error: ${sc.errorText}`,
-          "",
-          "From: " + sc.senderName + "   {edit}",
-          "To:   " + sc.supplierName + "   {edit}",
-          "",
-          "Type of lookup: ShipTo",
-          "From qualifier: CustomerSpecificShipTo = 5678",
-          hasSupp
-            ? `To qualifier: SupplierSpecificShipTo = ${suppVal}  (from SupplierDefined Accounts)`
-            : "To qualifier: SupplierSpecificShipTo = ?????",
-          ""
-        ];
-
-        const buttons = [];
-
-        if (hasSupp) {
-          buttons.push({
-            label: "CONFIRM AND PROCESS",
-            onClick: () => showSuccess()
-          });
-        } else {
-          buttons.push({
-            label: "PROCESS ANYWAY (WRONG)",
-            onClick: () => {
-              loseCredit();
-              const msg = [
-                "=== ORDER STILL FAILING ===",
-                "",
-                "You tried to process the order without using the correct",
-                "SupplierSpecificShipTo from SupplierDefined Accounts.",
-                "",
-                "Hint: for this scenario, the mapping is already in the list.",
-                ""
-              ];
-              setScreen(msg, [
-                { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-                { label: "Back to Main Menu", onClick: () => showMainMenu() }
-              ]);
-            }
-          });
+        if (!gameState[2].hasSupplierShipToFromList) {
+          loseCredit();
+          const lines = [
+            "You attempt to create a mapping without using the",
+            "SupplierDefined Accounts list.",
+            "",
+            "In this scenario, that list is the agreed source.",
+            ""
+          ];
+          setScreen(lines, [
+            { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+            { label: "Back to Main Menu", onClick: () => showMainMenu() }
+          ], "process");
+          return;
         }
-
-        buttons.push({ label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() });
-
-        setScreen(lines, buttons);
-
       } else if (currentScenarioId === 3) {
         const gs = gameState[3];
-        const hasSupp = gs.hasSupplierShipToFromCustomer && gs.savedToSupplierDefined;
-        const suppVal = scenarios[3].correctSupplierShipTo;
-
-        const lines = [
-          "=== PROCESS ORDER ===",
-          "",
-          `PO:        ${sc.poRef}`,
-          `Date/Time: ${sc.orderDateTime}`,
-          "",
-          `Error: ${sc.errorText}`,
-          "",
-          "From: " + sc.senderName + "   {edit}",
-          "To:   " + sc.supplierName + "   {edit}",
-          "",
-          "Type of lookup: ShipTo",
-          `From qualifier: CustomerSpecificShipTo = ${sc.correctCustomerShipTo}`,
-          hasSupp
-            ? `To qualifier: SupplierSpecificShipTo = ${suppVal}  (captured + saved to list)`
-            : "To qualifier: SupplierSpecificShipTo = ?????",
-          ""
-        ];
-
-        const buttons = [];
-
-        if (hasSupp) {
-          buttons.push({
-            label: "CONFIRM AND PROCESS",
-            onClick: () => showSuccess()
-          });
-        } else {
-          buttons.push({
-            label: "PROCESS ANYWAY (WRONG)",
-            onClick: () => {
-              loseCredit();
-              const msg = [
-                "=== ORDER STILL FAILING ===",
-                "",
-                "You tried to process the order without having a properly",
-                "captured + saved SupplierSpecificShipTo.",
-                "",
-                "Hint: in this scenario you must:",
-                "  1) Get the account from the customer (Q34M35)",
-                "  2) Add it to SupplierDefined Accounts",
-                "  3) Then process the order.",
-                ""
-              ];
-              setScreen(msg, [
-                { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
-                { label: "Back to Main Menu", onClick: () => showMainMenu() }
-              ]);
-            }
-          });
+        if (!(gs.hasSupplierShipToFromCustomer && gs.savedToSupplierDefined)) {
+          loseCredit();
+          const lines = [
+            "You try to map the order without both:",
+            "",
+            "  - capturing the new account from the customer, and",
+            "  - updating SupplierDefined Accounts.",
+            "",
+            "For this scenario, you must do BOTH before using the code."
+          ];
+          setScreen(lines, [
+            { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+            { label: "Back to Main Menu", onClick: () => showMainMenu() }
+          ], "process");
+          return;
         }
-
-        buttons.push({ label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() });
-
-        setScreen(lines, buttons);
       }
+
+      // Now collect mapping details
+      const fromName = prompt("Enter FROM organisation name (buyer):");
+      if (!fromName) { mappingFailed("Mapping incomplete (missing From name)."); return; }
+
+      const toName = prompt("Enter TO organisation name (supplier):");
+      if (!toName) { mappingFailed("Mapping incomplete (missing To name)."); return; }
+
+      const lookupTypeInput = prompt("Type of lookup (Main / ShipTo / BillTo):");
+      if (!lookupTypeInput) { mappingFailed("Mapping incomplete (missing lookup type)."); return; }
+      const lookupType = lookupTypeInput.trim().toLowerCase();
+
+      const fromQNum = prompt(
+        "FROM side qualifier:\n" +
+        " 1) From EID\n" +
+        " 2) From EanLocation\n" +
+        " 3) From CustomerSpecificShipTo\n" +
+        " 4) From CustomerSpecificBillTo\n" +
+        " 5) From SupplierSpecificShipTo\n" +
+        " 6) From SupplierSpecificBillTo\n\n" +
+        "Enter 1-6:"
+      );
+      const fromQualifier = mapQualifier(true, fromQNum);
+      if (!fromQualifier) { mappingFailed("Invalid FROM qualifier choice."); return; }
+
+      const fromValue = prompt("Enter FROM value:");
+      if (!fromValue) { mappingFailed("Mapping incomplete (missing FROM value)."); return; }
+
+      const toQNum = prompt(
+        "TO side qualifier:\n" +
+        " 1) To EID\n" +
+        " 2) To EanLocation\n" +
+        " 3) To CustomerSpecificShipTo\n" +
+        " 4) To CustomerSpecificBillTo\n" +
+        " 5) To SupplierSpecificShipTo\n" +
+        " 6) To SupplierSpecificBillTo\n\n" +
+        "Enter 1-6:"
+      );
+      const toQualifier = mapQualifier(false, toQNum);
+      if (!toQualifier) { mappingFailed("Invalid TO qualifier choice."); return; }
+
+      const toValue = prompt("Enter TO value:");
+      if (!toValue) { mappingFailed("Mapping incomplete (missing TO value)."); return; }
+
+      // Validation
+      const namesOk =
+        fromName.trim().toLowerCase() === sc.senderName.toLowerCase() &&
+        toName.trim().toLowerCase() === sc.supplierName.toLowerCase();
+
+      let lookupTypeOk = false;
+      let fromOk = false;
+      let toOk = false;
+
+      if (currentScenarioId === 1) {
+        // ShipTo -> EID
+        lookupTypeOk = (lookupType === "shipto");
+        fromOk =
+          fromQualifier.toLowerCase() === "from customerspecificshipto" &&
+          fromValue.trim() === "1234";
+        toOk =
+          toQualifier.toLowerCase() === "to eid" &&
+          toValue.trim() === scenarios[1].correctEid;
+      } else if (currentScenarioId === 2) {
+        // ShipTo -> SupplierSpecificShipTo
+        lookupTypeOk = (lookupType === "shipto");
+        fromOk =
+          fromQualifier.toLowerCase() === "from customerspecificshipto" &&
+          fromValue.trim() === scenarios[2].correctCustomerShipTo;
+        const gs2 = gameState[2];
+        const expectedSupp = gs2.selectedSupplierShipTo || scenarios[2].correctSupplierShipTo;
+        toOk =
+          toQualifier.toLowerCase() === "to supplierspecificshipto" &&
+          toValue.trim().toUpperCase() === expectedSupp.toUpperCase();
+      } else if (currentScenarioId === 3) {
+        // ShipTo -> SupplierSpecificShipTo with new account Q34M35
+        lookupTypeOk = (lookupType === "shipto");
+        fromOk =
+          fromQualifier.toLowerCase() === "from customerspecificshipto" &&
+          fromValue.trim() === scenarios[3].correctCustomerShipTo;
+        toOk =
+          toQualifier.toLowerCase() === "to supplierspecificshipto" &&
+          toValue.trim().toUpperCase() === scenarios[3].correctSupplierShipTo;
+      }
+
+      if (namesOk && lookupTypeOk && fromOk && toOk) {
+        showSuccess();
+      } else {
+        mappingFailed("The mapping you entered is not correct for this failure.");
+      }
+    }
+
+    function mapQualifier(isFrom, choiceStr) {
+      const n = parseInt(choiceStr, 10);
+      if (isNaN(n)) return null;
+      if (isFrom) {
+        switch (n) {
+          case 1: return "From EID";
+          case 2: return "From EanLocation";
+          case 3: return "From CustomerSpecificShipTo";
+          case 4: return "From CustomerSpecificBillTo";
+          case 5: return "From SupplierSpecificShipTo";
+          case 6: return "From SupplierSpecificBillTo";
+          default: return null;
+        }
+      } else {
+        switch (n) {
+          case 1: return "To EID";
+          case 2: return "To EanLocation";
+          case 3: return "To CustomerSpecificShipTo";
+          case 4: return "To CustomerSpecificBillTo";
+          case 5: return "To SupplierSpecificShipTo";
+          case 6: return "To SupplierSpecificBillTo";
+          default: return null;
+        }
+      }
+    }
+
+    function mappingFailed(reason) {
+      loseCredit();
+      const sc = getScenario();
+      const lines = [
+        "=== ORDER STILL FAILING ===",
+        "",
+        `Scenario: ${sc.name}`,
+        "",
+        reason,
+        "",
+        "Review the failure, think about the correct source for data,",
+        "and try again while you still have time and credits."
+      ];
+      setScreen(lines, [
+        { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
+        { label: "Back to Main Menu", onClick: () => showMainMenu() }
+      ], "process");
     }
 
     // ---------- SUCCESS / TIMEUP / GAMEOVER ----------
 
     function showSuccess() {
-      if (timerId) clearInterval(timerId);
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
       const sc = getScenario();
 
       const lines = [
@@ -825,17 +1053,17 @@
         "",
         `Scenario: ${sc.name}`,
         "",
-        "You followed the correct path and created the right mapping",
-        "before time and credits ran out.",
+        "You followed a valid path and built the correct mapping.",
         "",
-        "Bonus: play a quick SPACE CLEANUP mini-game?",
-        ""
+        "The order clears, and the failure is resolved.",
+        "",
+        "Bonus: play a quick SPACE CLEANUP mini-game?"
       ];
 
       setScreen(lines, [
         { label: "Play SPACE CLEANUP", onClick: () => startMiniGame() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], null);
     }
 
     function showTimeUp() {
@@ -854,7 +1082,7 @@
       setScreen(lines, [
         { label: "Back to ERROR SCREEN", onClick: () => showErrorScreen() },
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], "error");
     }
 
     function showGameOver() {
@@ -863,17 +1091,15 @@
         "",
         "You have no credits left for this run.",
         "",
-        "In a real shift, this would be:",
-        "  - several orders still failing",
-        "  - unhappy customers and suppliers",
+        "In a real shift, this would be multiple orders still failing.",
         "",
-        "Here, you can just try again :-)",
+        "Here, you can just try again and refine your decisions.",
         ""
       ];
 
       setScreen(lines, [
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], null);
     }
 
     // ---------- BONUS MINI-GAME: SPACE CLEANUP ----------
@@ -919,6 +1145,7 @@
         clearInterval(miniGameLoopId);
         miniGameLoopId = null;
       }
+      updateStatusBar();
     }
 
     function updateMiniGame() {
@@ -1039,7 +1266,7 @@
 
       setScreen(lines, [
         { label: "Back to Main Menu", onClick: () => showMainMenu() }
-      ]);
+      ], null);
     }
 
     // Keyboard controls for mini-game
